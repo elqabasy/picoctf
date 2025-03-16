@@ -35,7 +35,7 @@ jobs:
           Name-Email: ci@example.com
           Expire-Date: 0
           %commit
-EOF
+
           # Generate the key in batch mode (non-interactive)
           gpg --batch --generate-key gpg-key.conf
           # List keys for debugging
