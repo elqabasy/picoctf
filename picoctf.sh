@@ -1,97 +1,141 @@
-name: Build and Release .deb Package
+#!/bin/bash
 
-on:
-  push:
-    branches:
-      - main
-  pull_request:
+# Show help/manual for the tool
+show_help() {
+    echo "picoctf - A versatile tool for handling picoCTF flags"
+    echo
+    echo "Usage:"
+    echo "  picoctf [COMMAND] [OPTIONS] [INPUT]"
+    echo
+    echo "Commands:"
+    echo "  flag     Wrap input in the picoCTF flag format"
+    echo "  find     Extract the first picoCTF flag from input"
+    echo "  format   Format input to remove spaces and enforce correct capitalization"
+    echo
+    echo "Options:"
+    echo "  --copy   Copy the output to the clipboard using xsel"
+    echo "  --help   Display this help message and exit"
+    echo
+    echo "Examples:"
+    echo "  picoctf flag \"example_flag\""
+    echo "  echo \"example_flag\" | picoctf flag --copy"
+    echo "  picoctf flag flag.txt"
+    echo
+    echo "  picoctf find \"p i c oCTF{example_flag}\" --copy"
+    echo "  echo \"picoCTF{example_flag}\" | picoctf find"
+    echo "  picoctf find file.txt"
+    echo
+    echo "  picoctf format \"p i co c T F {3 n h 4 n c 3 d}\" --copy"
+    echo
+}
 
-jobs:
-  build-and-release:
-    runs-on: ubuntu-latest
+# Copy output to clipboard using xsel
+copy_to_clipboard() {
+    if command -v xsel &> /dev/null; then
+        if [[ -z "$1" ]]; then
+            echo "WARNING: The copied text is empty."
+            return 1
+        #elif [[ ! "$1" =~ ^(?i)picoCTF{[^}]*}$ ]]; then
+            # echo "WARNING: The copied text is not in picoCTF format."
+		
+        fi
+        echo -n "$1" | xsel --clipboard --input
+        echo "(Copied to clipboard)"
+    else
+        echo "Error: xsel is not installed. Please install it to use --copy."
+        exit 1
+    fi
+}
 
-    steps:
-      # 1. Checkout repository
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+# Generate a picoCTF flag
+picoflag() {
+    local output
+    if [ -p /dev/stdin ]; then
+        # Handle input from a pipeline
+        while IFS= read -r line; do
+            output+="picoCTF{$line}"$'\n'
+        done
+        echo -n "$output"
+    elif [ -f "$1" ]; then
+        # Handle input from a file
+        while IFS= read -r line; do
+            output+="picoCTF{$line}"$'\n'
+        done < "$1"
+        echo -n "$output"
+    else
+        # Handle input as a direct string
+        output="picoCTF{$1}"
+        echo "$output"
+    fi
 
-      # 2. Install dependencies
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y shc dpkg-dev debsigs lintian shellcheck gpg
+    # Copy to clipboard if --copy is enabled
+    [[ "$COPY" == "true" ]] && copy_to_clipboard "$output"
+}
 
-      # 3. Lint Shell Scripts
-      - name: Lint Shell Scripts
-        run: shellcheck picoctf.sh
+# Extract the first picoCTF flag from input
+picofind() {
+    local output
+    if [ -p /dev/stdin ]; then
+        # Handle input from a pipeline
+        output=$(grep -a -o -i -m 1 'picoCTF{[^}]*}')
+    elif [ -f "$1" ]; then
+        # Handle input from a file
+        output=$(grep -a -o -i -m 1 'picoCTF{[^}]*}' "$1")
+    else
+        # Handle input as a direct string
+        output=$(echo "$1" | grep -a -o -i -m 1 'picoCTF{[^}]*}')
+    fi
 
-      # 4. Build binary from shell script using shc
-      - name: Build Binary from Shell Script
-        run: |
-          chmod +x picoctf.sh
-          shc -f picoctf.sh
-          mv picoctf.sh.x picoctf
-          ls -l picoctf
+    echo "$output"
+    # Copy to clipboard if --copy is enabled
+    [[ "$COPY" == "true" ]] && copy_to_clipboard "$output"
+}
 
-      # 5. Create .deb package structure with a correctly formatted control file
-      - name: Create .deb Package Structure
-        run: |
-          mkdir -p package/DEBIAN
-          mkdir -p package/usr/local/bin
-          cp picoctf package/usr/local/bin/
-          chmod +x package/usr/local/bin/picoctf
+# Format input to ensure correct picoCTF capitalization and remove spaces
+picoformat() {
+    local output
+    formatted=$(echo "$1" | tr -d '[:space:]')
+    if [[ "$formatted" =~ ^[pP][iI][cC][oO][cC][tT][fF] ]]; then
+        output="picoCTF${formatted:7}"
+    else
+        output="$formatted"
+    fi
 
-          # Create the control file with proper Debian formatting
-          cat <<'EOF' > package/DEBIAN/control
-Package: picoctf
-Version: 1.0
-Section: utils
-Priority: optional
-Architecture: all
-Depends: bash
-Maintainer: Mahros <mahros.elqabasy@gmail.com>
-Origin: picoctf
-Description: A versatile command-line tool for handling picoCTF flags.
- This package provides functionality to wrap input into the picoCTF flag format,
- extract the first picoCTF flag from given text or files, and format input to ensure
- proper capitalization and spacing for picoCTF challenges.
-EOF
-          cat package/DEBIAN/control
+    echo "$output"
+    # Copy to clipboard if --copy is enabled
+    [[ "$COPY" == "true" ]] && copy_to_clipboard "$output"
+}
 
-      # 6. Build the .deb package
-      - name: Build .deb Package
-        run: |
-          dpkg-deb --build --root-owner-group package picoctf.deb
-          ls -l picoctf.deb
+# Main functionality dispatcher
+COPY="false"
+for arg in "$@"; do
+    if [[ "$arg" == "--copy" ]]; then
+        COPY="true"
+        break
+    fi
+done
 
-      # 7. Sign the .deb package using debsigs and your GPG key
-      - name: Sign .deb Package with GPG
-        env:
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: |
-          echo "$GPG_PRIVATE_KEY" | gpg --import
-          KEY_ID=$(gpg --list-keys --with-colons | awk -F: '/^pub/ {print $5; exit}')
-          echo "Signing using key: $KEY_ID"
-          debsigs --sign=origin -k "$KEY_ID" picoctf.deb
+if [[ "$1" == "--help" || -z "$1" ]]; then
+    show_help
+    exit 0
+fi
 
-      # 8. Validate the package using lintian
-      - name: Validate Package with Lintian
-        run: |
-          lintian picoctf.deb || true
+command=$1
+shift
 
-      # 9. Test package installation in a Debian container
-      - name: Test Package Installation in Docker Container
-        run: |
-          docker run --rm -v "$(pwd):/packages" debian:latest bash -c "apt-get update && dpkg -i /packages/picoctf.deb && picoctf --help"
-
-      # 10. Create a GitHub Release and attach the .deb package
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.sha }}
-          name: Release ${{ github.sha }}
-          body: "Automated release of picoCTF package"
-          files: picoctf.deb
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+case $command in
+    flag)
+        picoflag "$@"
+        ;;
+    find)
+        picofind "$@"
+        ;;
+    format)
+        picoformat "$@"
+        ;;
+    *)
+        echo "Invalid command: $command"
+        echo "Use '--help' to see the available commands."
+        exit 1
+        ;;
+esac
