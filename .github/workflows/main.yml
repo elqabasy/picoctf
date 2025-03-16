@@ -6,7 +6,6 @@ on:
       - main
   pull_request:
 
-# Explicitly grant write permissions to repository contents
 permissions:
   contents: write
 
@@ -38,6 +37,7 @@ jobs:
           Name-Email: ci@example.com
           Expire-Date: 0
           %commit
+EOF
           gpg --batch --generate-key gpg-key.conf
           rm gpg-key.conf
           gpg --list-keys --with-colons
@@ -106,7 +106,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: "${{ github.sha }}"
+          tag_name: "release-${{ github.sha }}"
           name: "Release ${{ github.sha }}"
           body: "Automated release of picoCTF package with ephemeral GPG key"
           files: picoctf.deb
