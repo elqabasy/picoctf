@@ -1,3 +1,5 @@
+# shellcheck disable=SC2148,SC2215,SC2216,SC2086,SC2296,SC1083
+
 name: Build and Release .deb Package
 
 on:
