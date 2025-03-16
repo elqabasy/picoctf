@@ -34,10 +34,9 @@ jobs:
           Name-Email: ci@example.com
           Expire-Date: 0
           %commit
-          # Generate the key in batch mode
+EOF
           gpg --batch --generate-key gpg-key.conf
           rm gpg-key.conf
-          # List keys for debugging
           gpg --list-keys --with-colons
 
       # 4. Retrieve the ephemeral key ID
@@ -48,12 +47,11 @@ jobs:
           echo "Key ID: $KEY_ID"
           echo "::set-output name=KEY_ID::$KEY_ID"
 
-      # 5. Build binary from shell script using shc
+      # 5. Build binary from shell script using shc (using the -r flag for a relocatable binary)
       - name: Build Binary from Shell Script
         run: |
-          # Ensure picoctf.sh is a valid Bash script with a proper shebang
           chmod +x picoctf.sh
-          shc -f picoctf.sh
+          shc -r -f picoctf.sh
           mv picoctf.sh.x picoctf
           ls -l picoctf
 
