@@ -71,12 +71,14 @@ jobs:
           GPG_PRIVATE_KEY: "${{ secrets.GPG_PRIVATE_KEY }}"
           GPG_PASSPHRASE: "${{ secrets.GPG_PASSPHRASE }}"
         run: |
-          # Import the private key in batch mode with loopback pinentry
-          echo "$GPG_PRIVATE_KEY" | gpg --batch --pinentry-mode loopback --import
+          # Configure GPG to use loopback pinentry in non-interactive mode
+          mkdir -p ~/.gnupg
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          # Import the private key in batch mode
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
           KEY_ID=$(gpg --list-keys --with-colons | awk -F: '/^pub/ {print $5; exit}')
           echo "Signing using key: $KEY_ID"
-          # Pass extra gpg options so gpg operates in non-interactive mode during signing
-          debsigs --gpg-options "--batch --pinentry-mode=loopback" --sign=origin -k "$KEY_ID" picoctf.deb
+          debsigs --sign=origin -k "$KEY_ID" picoctf.deb
 
       # 8. Validate the package using lintian
       - name: Validate Package with Lintian
