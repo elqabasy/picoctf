@@ -86,16 +86,16 @@ jobs:
           ls -l picoctf.deb
 
       # 8. Sign the .deb package using debsigs with the ephemeral key
-      - name: Sign .deb Package with GPG
-        run: |
-          KEY_ID="${{ steps.keyid.outputs.KEY_ID }}"
-          echo "Signing using key: $KEY_ID"
-          debsigs --sign=origin -k "$KEY_ID" picoctf.deb
+      # - name: Sign .deb Package with GPG
+      #   run: |
+      #     KEY_ID="${{ steps.keyid.outputs.KEY_ID }}"
+      #     echo "Signing using key: $KEY_ID"
+      #     debsigs --sign=origin -k "$KEY_ID" picoctf.deb
 
       # 9. Validate the package using lintian
-      - name: Validate Package with Lintian
-        run: |
-          lintian picoctf.deb || true
+      # - name: Validate Package with Lintian
+      #   run: |
+      #     lintian picoctf.deb || true
 
       # 10. Test package installation in a Debian container
       - name: Test Package Installation in Docker Container
