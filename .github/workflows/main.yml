@@ -24,7 +24,6 @@ jobs:
       # 3. Generate an ephemeral GPG key for signing
       - name: Generate Ephemeral GPG Key
         run: |
-          # Create a key generation configuration file
           cat > gpg-key.conf <<EOF
           Key-Type: RSA
           Key-Length: 4096
@@ -35,13 +34,13 @@ jobs:
           Name-Email: ci@example.com
           Expire-Date: 0
           %commit
-
-          # Generate the key in batch mode (non-interactive)
+          # Generate the key in batch mode
           gpg --batch --generate-key gpg-key.conf
+          rm gpg-key.conf
           # List keys for debugging
           gpg --list-keys --with-colons
 
-      # 4. Retrieve the generated key ID
+      # 4. Retrieve the ephemeral key ID
       - name: Get Ephemeral Key ID
         id: keyid
         run: |
@@ -90,7 +89,6 @@ jobs:
         run: |
           KEY_ID="${{ steps.keyid.outputs.KEY_ID }}"
           echo "Signing using key: $KEY_ID"
-          # Sign the package using the generated key
           debsigs --sign=origin -k "$KEY_ID" picoctf.deb
 
       # 9. Validate the package using lintian
@@ -103,7 +101,7 @@ jobs:
         run: |
           docker run --rm -v "$(pwd):/packages" debian:latest bash -c "apt-get update && dpkg -i /packages/picoctf.deb && picoctf --help"
 
-      # 11. (Optional) Create a GitHub Release and attach the .deb package
+      # 11. Create a GitHub Release and attach the .deb package
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
