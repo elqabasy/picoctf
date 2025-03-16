@@ -1,0 +1,58 @@
+name: Build and Release .deb Package
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev debsigs lintian shellcheck gpg
+      
+      - name: Lint Shell Scripts
+        run: |
+          shellcheck picoctf.sh
+
+      - name: Build .deb Package
+        run: |
+          dpkg-deb --build --root-owner-group picoctf/
+          mv picoctf.deb picoctf-${{ github.sha }}.deb
+
+      - name: Sign .deb Package with GPG
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --import
+          echo "$GPG_PASSPHRASE" | debsigs --sign=origin -k $(gpg --list-keys --with-colons | grep pub | awk -F: '{print $5}') picoctf-${{ github.sha }}.deb
+
+      - name: Validate .deb Package with lintian
+        run: |
+          lintian picoctf-${{ github.sha }}.deb || true
+
+      - name: Test Package Installation in Docker
+        run: |
+          docker run --rm -v "$(pwd):/packages" debian:latest bash -c "apt-get update && dpkg -i /packages/picoctf-${{ github.sha }}.deb && picoctf --help"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.sha }}
+          name: Release ${{ github.sha }}
+          body: "Automated release of picoCTF package"
+          files: picoctf-${{ github.sha }}.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
