@@ -1,4 +1,4 @@
-name: Build and Release .deb Package
+name: Build and Release .deb Package with Ephemeral GPG Key
 
 on:
   push:
@@ -21,24 +21,44 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y shc dpkg-dev debsigs lintian gpg
 
-      # 3. Lint Shell Scripts (only if picoctf.sh exists)
-      # - name: Lint Shell Scripts
-      #   run: |
-          # if [ -f picoctf.sh ]; then
-          #   # shellcheck picoctf.sh
-          # else
-          #   echo "picoctf.sh not found, skipping linting."
-          # fi
+      # 3. Generate an ephemeral GPG key for signing
+      - name: Generate Ephemeral GPG Key
+        run: |
+          # Create a key generation configuration file
+          cat > gpg-key.conf <<EOF
+          Key-Type: RSA
+          Key-Length: 4096
+          Subkey-Type: RSA
+          Subkey-Length: 4096
+          Name-Real: GitHub CI
+          Name-Comment: Ephemeral key for CI signing
+          Name-Email: ci@example.com
+          Expire-Date: 0
+          %commit
+EOF
+          # Generate the key in batch mode (non-interactive)
+          gpg --batch --generate-key gpg-key.conf
+          # List keys for debugging
+          gpg --list-keys --with-colons
 
-      # 4. Build binary from shell script using shc
+      # 4. Retrieve the generated key ID
+      - name: Get Ephemeral Key ID
+        id: keyid
+        run: |
+          KEY_ID=$(gpg --list-keys --with-colons | awk -F: '/^pub/ {print $5; exit}')
+          echo "Key ID: $KEY_ID"
+          echo "::set-output name=KEY_ID::$KEY_ID"
+
+      # 5. Build binary from shell script using shc
       - name: Build Binary from Shell Script
         run: |
+          # Ensure picoctf.sh is a valid Bash script with a proper shebang
           chmod +x picoctf.sh
           shc -f picoctf.sh
           mv picoctf.sh.x picoctf
           ls -l picoctf
 
-      # 5. Create .deb package structure
+      # 6. Create .deb package structure
       - name: Create .deb Package Structure
         run: |
           mkdir -p package/DEBIAN
@@ -59,40 +79,37 @@ jobs:
           echo " proper capitalization and spacing for picoCTF challenges." >> package/DEBIAN/control
           cat package/DEBIAN/control
 
-      # 6. Build the .deb package
+      # 7. Build the .deb package
       - name: Build .deb Package
         run: |
           dpkg-deb --build --root-owner-group package picoctf.deb
           ls -l picoctf.deb
 
-      # 7. Sign the .deb package using debsigs and your GPG key
+      # 8. Sign the .deb package using debsigs with the ephemeral key
       - name: Sign .deb Package with GPG
-        env:
-          GPG_PRIVATE_KEY: "${{ secrets.GPG_PRIVATE_KEY }}"
-          GPG_PASSPHRASE: "${{ secrets.GPG_PASSPHRASE }}"
         run: |
-          echo "$GPG_PRIVATE_KEY" | gpg --batch --pinentry-mode loopback --import
-          KEY_ID=$(gpg --list-keys --with-colons | awk -F: '/^pub/ {print $5; exit}')
+          KEY_ID="${{ steps.keyid.outputs.KEY_ID }}"
           echo "Signing using key: $KEY_ID"
+          # Sign the package using the generated key
           debsigs --sign=origin -k "$KEY_ID" picoctf.deb
 
-      # 8. Validate the package using lintian
+      # 9. Validate the package using lintian
       - name: Validate Package with Lintian
         run: |
           lintian picoctf.deb || true
 
-      # 9. Test package installation in a Debian container
+      # 10. Test package installation in a Debian container
       - name: Test Package Installation in Docker Container
         run: |
           docker run --rm -v "$(pwd):/packages" debian:latest bash -c "apt-get update && dpkg -i /packages/picoctf.deb && picoctf --help"
 
-      # 10. Create a GitHub Release and attach the .deb package
+      # 11. (Optional) Create a GitHub Release and attach the .deb package
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: "${{ github.sha }}"
           name: "Release ${{ github.sha }}"
-          body: "Automated release of picoCTF package"
+          body: "Automated release of picoCTF package with ephemeral GPG key"
           files: picoctf.deb
         env:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
