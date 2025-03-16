@@ -107,12 +107,20 @@ picoformat() {
 }
 
 # Main functionality dispatcher
-COPY="false"  # Default: don't copy
-if [[ "$@" == *"--copy"* ]]; then
-    COPY="true"
-    # Remove the --copy flag from the arguments
-    set -- "${@/--copy/}"
-fi
+COPY="false"
+for arg in "$@"; do
+    if [[ "$arg" == "--copy" ]]; then
+        COPY="true"
+        break
+    fi
+done
+
+# COPY="false"  # Default: don't copy
+# if [[ "$@" == *"--copy"* ]]; then
+#     COPY="true"
+#     # Remove the --copy flag from the arguments
+#     set -- "${@/--copy/}"
+# fi
 
 if [[ "$1" == "--help" || -z "$1" ]]; then
     show_help
